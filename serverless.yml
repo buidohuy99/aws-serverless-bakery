@@ -1,0 +1,68 @@
+service: aws-serverless-course-bakery
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:PutItem
+        - dynamodb:GetItem
+        - dynamodb:UpdateItem
+      Resource:
+        - arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/orders
+    - Effect: Allow
+      Action:
+        - kinesis:PutRecord
+      Resource:
+        - arn:aws:kinesis:${aws:region}:${aws:accountId}:stream/order-events
+        - arn:aws:kinesis:${aws:region}:${aws:accountId}:stream/order-fulfillments
+
+functions:
+  createOrder:
+    handler: handler.createOrder
+    events:
+      - http:
+          path: /order
+          method: POST
+    environment:
+      ordersTableName: orders
+      orderEventsStreamName: order-events
+  fulfillOrder:
+    handler: handler.fulfillOrder
+    events:
+      - http:
+          path: /order/fulfill
+          method: POST
+    environment:
+      ordersTableName: orders
+      orderFulfillmentsStreamName: order-fulfillments
+
+resources:
+  Resources:
+    orderEventsStream:
+      Type: AWS::Kinesis::Stream 
+      Properties:
+        Name: order-events
+        ShardCount: 1
+    orderFulfillmentsStream:
+      Type: AWS::Kinesis::Stream 
+      Properties:
+        Name: order-fulfillments
+        ShardCount: 1
+    orderTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: orders
+        BillingMode: PAY_PER_REQUEST
+        KeySchema:
+          - AttributeName: "id"
+            KeyType: "HASH"
+        AttributeDefinitions:
+          - AttributeName: "id"
+            AttributeType: "S"
+
+
