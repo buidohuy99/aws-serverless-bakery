@@ -20,6 +20,22 @@ provider:
       Resource:
         - arn:aws:kinesis:${aws:region}:${aws:accountId}:stream/order-events
         - arn:aws:kinesis:${aws:region}:${aws:accountId}:stream/order-fulfillments
+    - Effect: Allow
+      Action:
+        - ses:SendEmail
+      Resource:
+        - '*'
+      Condition: 
+        StringEquals:
+          ses:FromAddress: 
+            - qeganucu@forexnews.bg
+    - Effect: Allow
+      Action:
+        - sqs:SendMessage
+        - sqs:ReceiveMessage
+      Resource:
+        - arn:aws:sqs:${aws:region}:${aws:accountId}:delivery-queue
+        - arn:aws:sqs:${aws:region}:${aws:accountId}:feedback-queue
 
 functions:
   createOrder:
@@ -40,6 +56,55 @@ functions:
     environment:
       ordersTableName: orders
       orderFulfillmentsStreamName: order-fulfillments
+  notifyCakeProducer:
+    handler: handler.notifyCakeProducer
+    events:
+      - stream:
+          arn: arn:aws:kinesis:${aws:region}:${aws:accountId}:stream/order-events
+    environment:
+      region: ${aws:region}
+      CAKE_PRODUCER_MAIL: celox41755@giftcv.com
+      ORDERING_SYSTEM_MAIL: qeganucu@forexnews.bg
+  sendDeliveryRequest:
+    handler: handler.sendDeliveryRequest
+    events:
+      - stream:
+          arn: arn:aws:kinesis:${aws:region}:${aws:accountId}:stream/order-fulfillments
+    environment:
+      region: ${aws:region}
+      ordersTableName: orders
+      deliveryQueue: 
+        Ref: deliveryShipQueue
+  notifyDeliveryCompany:
+    handler: handler.notifyDeliveryCompany
+    events:
+      - sqs:
+          arn: 
+            Fn::GetAtt: 
+              - deliveryShipQueue
+              - Arn 
+          batchSize: 1
+  giveFeedbackOnOrder:
+    handler: handler.giveFeedbackOnOrder
+    events:
+      - http:
+          path: order/delivered
+          method: POST
+    environment:
+      region: ${aws:region}
+      ordersTableName: orders
+      feedbackQueue:
+        Ref: customerServiceFeedbackQueue
+  notifyCustomerService:
+    handler: handler.notifyCustomerService
+    events:
+      - sqs:
+          arn: 
+            Fn::GetAtt: 
+              - customerServiceFeedbackQueue
+              - Arn 
+          batchSize: 1
+    
 
 resources:
   Resources:
@@ -64,5 +129,14 @@ resources:
         AttributeDefinitions:
           - AttributeName: "id"
             AttributeType: "S"
+    deliveryShipQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: delivery-queue
+    customerServiceFeedbackQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: feedback-queue
+        
 
 

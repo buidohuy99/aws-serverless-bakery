@@ -61,25 +61,64 @@ module.exports.fulfillOrder = async (body) => {
 
     const fulfillmentId = body.fulfillmentId;
     const fulfillmentDate = Date.now();
+    const orderStatus = 'order-fulfilled';
     order.Item.fulfillmentId = fulfillmentId;
     order.Item.fulfillmentDate = fulfillmentDate;
+    order.Item.orderStatus = orderStatus;
 
     await dynamo.update({
         TableName: process.env.ordersTableName,
         Key: {id: body.orderId},    
-        UpdateExpression: "SET fulfillmentId = :fulfillmentId, fulfillmentDate = :fulfillmentDate",
+        UpdateExpression: "SET fulfillmentId = :fulfillmentId, fulfillmentDate = :fulfillmentDate, orderStatus = :orderStatus",
         ExpressionAttributeValues: {
             ":fulfillmentId": fulfillmentId,
-            ":fulfillmentDate": fulfillmentDate
+            ":fulfillmentDate": fulfillmentDate,
+            ":orderStatus": orderStatus
         }
     }).promise();
 
-    console.log(order);
-
     await kinesis.putRecord({
-        Data: JSON.stringify(order),
+        Data: JSON.stringify(order.Item),
         PartitionKey: order.Item.id,
         StreamName: process.env.orderFulfillmentsStreamName
+    }).promise();
+
+    return order.Item;
+}
+
+module.exports.updateOrderStatusToDelivery = async (order) => {
+    const orderStatus = 'order-sent-to-delivery';
+    order.orderStatus = orderStatus;
+    order.sentToDeliveryDate = Date.now();
+
+    await dynamo.update({
+        TableName: process.env.ordersTableName,
+        Key: {id: order.id},    
+        UpdateExpression: "SET orderStatus = :orderStatus, sentToDeliveryDate = :sentToDeliveryDate",
+        ExpressionAttributeValues: {
+            ":orderStatus": orderStatus,
+            ":sentToDeliveryDate": order.sentToDeliveryDate,
+        }
+    }).promise();
+
+    return order;
+}
+
+module.exports.updateOrderStatusDelivered = async (order, deliveryCompanyId) => {
+    const orderStatus = 'order-delivered';
+    order.orderStatus = orderStatus;
+    order.deliveredDate = Date.now();
+    order.deliveryCompanyId = deliveryCompanyId;
+
+    await dynamo.update({
+        TableName: process.env.ordersTableName,
+        Key: {id: order.id},    
+        UpdateExpression: "SET orderStatus = :orderStatus, deliveredDate = :deliveredDate, deliveryCompanyId = :deliveryCompanyId",
+        ExpressionAttributeValues: {
+            ":orderStatus": orderStatus,
+            ":deliveredDate": order.deliveredDate,
+            ":deliveryCompanyId": deliveryCompanyId
+        }
     }).promise();
 
     return order;
